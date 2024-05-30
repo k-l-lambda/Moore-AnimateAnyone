@@ -8,12 +8,14 @@ import random
 import time
 import warnings
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import yaml
+#from tensorboardX import SummaryWriter
 
 import diffusers
-import mlflow
+#import mlflow
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -32,10 +34,12 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPVisionModelWithProjection
+import numpy as np
 
 from src.dataset.dance_video import HumanDanceVideoDataset
 from src.models.mutual_self_attention import ReferenceAttentionControl
 from src.models.pose_guider import PoseGuider
+from src.models.openpose_guider import OpenPoseGuider
 from src.models.unet_2d_condition import UNet2DConditionModel
 from src.models.unet_3d import UNet3DConditionModel
 from src.pipelines.pipeline_pose2vid import Pose2VideoPipeline
@@ -45,7 +49,10 @@ from src.utils.util import (
     read_frames,
     save_videos_grid,
     seed_everything,
+    read_frames,
+    get_fps,
 )
+from src.metrics import calculate_lpips, calculate_psnr, calculate_ssim, calculate_fvd
 
 warnings.filterwarnings("ignore")
 
@@ -80,7 +87,7 @@ class Net(nn.Module):
         pose_img,
         uncond_fwd: bool = False,
     ):
-        pose_cond_tensor = pose_img.to(device="cuda")
+        pose_cond_tensor = pose_img.to(device=self.pose_guider.device)
         pose_fea = self.pose_guider(pose_cond_tensor)
 
         if not uncond_fwd:
@@ -109,7 +116,7 @@ def compute_snr(noise_scheduler, timesteps):
     https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
     """
     alphas_cumprod = noise_scheduler.alphas_cumprod
-    sqrt_alphas_cumprod = alphas_cumprod**0.5
+    sqrt_alphas_cumprod = alphas_cumprod ** 0.5
     sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
 
     # Expand the tensors.
@@ -133,6 +140,88 @@ def compute_snr(noise_scheduler, timesteps):
     return snr
 
 
+def run_metric (config, device, pipe, decoder_consistency, save_dir, image_as_pose=False):
+    lpips_values = []
+    ssim_values = []
+    psnr_values = []
+    fvd_values = []
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    for src_path in tqdm(config.videos, desc='Calculating metrics'):
+        src_path = Path(src_path)
+        pose_path = os.path.join(str(src_path.parent) + '_dwpose', src_path.name)
+
+        source_frames = read_frames(str(src_path))
+        ref_image = source_frames[config.ref_frame]
+        pose_frames = source_frames if image_as_pose else read_frames(pose_path)
+        src_fps = get_fps(pose_path)
+
+        frame_l, frame_r = config.generate_frame_range
+        pose_images = pose_frames[frame_l:frame_r]
+
+        width, height = pose_images[0].size
+
+        generator = torch.manual_seed(config.seed)
+
+        pipe.set_progress_bar_config(desc=f"metric {src_path}")
+
+        video = pipe(
+            ref_image,
+            pose_images,
+            width,
+            height,
+            len(pose_images),
+            config.steps,
+            config.guidance_scale,
+            generator=generator,
+            decoder_consistency=decoder_consistency,
+        ).videos
+
+        image_transform = transforms.Compose(
+            [transforms.Resize((video.shape[-2], video.shape[-1])), transforms.ToTensor()]
+        )
+        source_tensor = [image_transform(img) for img in source_frames[frame_l:frame_r]]
+        source_tensor = torch.stack(source_tensor, dim=0).permute((1, 0, 2, 3))[None]
+        pose_tensor = [image_transform(img) for img in pose_images]
+        pose_tensor = torch.stack(pose_tensor, dim=0).permute((1, 0, 2, 3))[None]
+
+        if image_as_pose:
+            canvas = torch.cat([source_tensor, video], dim=0)
+            save_videos_grid(
+                canvas,
+                f"{save_dir}/{src_path.stem}.mp4",
+                n_rows=2,
+                fps=src_fps,
+            )
+        else:
+            canvas = torch.cat([source_tensor, pose_tensor, video], dim=0)
+            save_videos_grid(
+                canvas,
+                f"{save_dir}/{src_path.stem}.mp4",
+                n_rows=3,
+                fps=src_fps,
+            )
+
+        source_tensor = source_tensor.permute((0, 2, 1, 3, 4))
+        video = video.permute((0, 2, 1, 3, 4))
+
+        fvd_values += calculate_fvd(source_tensor, video, device, disable_progress_bar=True)['value'].values()
+        lpips_values += calculate_lpips(source_tensor, video, device, disable_progress_bar=True)['value'].values()
+        ssim_values += calculate_ssim(source_tensor, video, disable_progress_bar=True)['value'].values()
+        psnr_values += calculate_psnr(source_tensor, video, disable_progress_bar=True)['value'].values()
+
+    metric = dict(
+        fvd=float(np.mean(fvd_values)),
+        lpips=float(np.mean(lpips_values)),
+        ssim=float(np.mean(ssim_values)),
+        psnr=float(np.mean(psnr_values)),
+    )
+    yaml.safe_dump(metric, open(f'{save_dir}/metrics.yaml', 'w'))
+
+    return metric
+
+
 def log_validation(
     vae,
     image_enc,
@@ -143,6 +232,9 @@ def log_validation(
     height,
     clip_length=24,
     generator=None,
+    val_config=None,
+    save_dir=None,
+    image_as_pose=False,
 ):
     logger.info("Running validation... ")
 
@@ -166,7 +258,7 @@ def log_validation(
     )
     pipe = pipe.to(accelerator.device)
 
-    test_cases = [
+    test_cases = val_config.test_cases if val_config and hasattr(val_config, 'test_cases') else [
         (
             "./configs/inference/ref_images/anyone-3.png",
             "./configs/inference/pose_videos/anyone-video-1_kps.mp4",
@@ -190,22 +282,30 @@ def log_validation(
         pose_transform = transforms.Compose(
             [transforms.Resize((height, width)), transforms.ToTensor()]
         )
-        for pose_image_pil in pose_images[:clip_length]:
+
+        pose_range = val_config.pose_range if val_config and hasattr(val_config, 'pose_range') else [0, clip_length]
+
+        for pose_image_pil in pose_images[pose_range[0]:pose_range[1]]:
             pose_tensor_list.append(pose_transform(pose_image_pil))
             pose_list.append(pose_image_pil)
 
         pose_tensor = torch.stack(pose_tensor_list, dim=0)  # (f, c, h, w)
         pose_tensor = pose_tensor.transpose(0, 1)
 
+        pipe.set_progress_bar_config(desc=f"val {len(results)}/{len(test_cases)}")
+
+        guidance_scale = val_config.metric.guidance_scale if hasattr(val_config, 'metric') else 3.5
+
         pipeline_output = pipe(
             ref_image_pil,
             pose_list,
             width,
             height,
-            clip_length,
+            pose_range[1] - pose_range[0],
             20,
-            3.5,
+            guidance_scale,
             generator=generator,
+            uniform_along_time=val_config and hasattr(val_config, 'uniform_along_time') and val_config.uniform_along_time,
         )
         video = pipeline_output.videos
 
@@ -215,20 +315,27 @@ def log_validation(
 
         results.append({"name": f"{ref_name}_{pose_name}", "vid": video})
 
+    metric = None
+    if hasattr(val_config, 'metric'):
+        metric = run_metric(val_config.metric, 'cuda', pipe, None, save_dir, image_as_pose=image_as_pose)
+
     del tmp_denoising_unet
     del pipe
     torch.cuda.empty_cache()
 
-    return results
+    return results, metric
 
 
 def main(cfg):
     kwargs = DistributedDataParallelKwargs(find_unused_parameters=False)
+    exp_name = cfg.exp_name
+    save_dir = cfg.save_dir if hasattr(cfg, "save_dir") else f"{cfg.output_dir}/{date.today().strftime('%Y%m%d')}-{exp_name}"
+
     accelerator = Accelerator(
         gradient_accumulation_steps=cfg.solver.gradient_accumulation_steps,
         mixed_precision=cfg.solver.mixed_precision,
-        log_with="mlflow",
-        project_dir="./mlruns",
+        log_with="tensorboard",
+        project_dir=save_dir,
         kwargs_handlers=[kwargs],
     )
 
@@ -250,11 +357,11 @@ def main(cfg):
     if cfg.seed is not None:
         seed_everything(cfg.seed)
 
-    exp_name = cfg.exp_name
-    save_dir = f"{cfg.output_dir}/{exp_name}"
     if accelerator.is_main_process:
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
+
+    #tb_writer = SummaryWriter(log_dir=save_dir)
 
     inference_config_path = "./configs/inference/inference_v2.yaml"
     infer_config = OmegaConf.load(inference_config_path)
@@ -299,9 +406,18 @@ def main(cfg):
         ),
     ).to(device="cuda")
 
-    pose_guider = PoseGuider(
-        conditioning_embedding_channels=320, block_out_channels=(16, 32, 96, 256)
-    ).to(device="cuda", dtype=weight_dtype)
+    openpose_guider_enabled = hasattr(cfg, 'openpose_guider') and cfg.openpose_guider.enable
+    if openpose_guider_enabled:
+        pose_guider = OpenPoseGuider(
+            conditioning_embedding_channels=320,
+            block_out_channels=cfg.openpose_guider.block_out_channels,
+        ).to("cuda", dtype=weight_dtype)
+    else:
+        pose_guider = PoseGuider(
+            conditioning_embedding_channels=320,
+            # block_out_channels=(16, 32, 64, 128)
+            block_out_channels=(16, 32, 96, 256)
+        ).to(device="cuda", dtype=weight_dtype)
 
     stage1_ckpt_dir = cfg.stage1_ckpt_dir
     stage1_ckpt_step = cfg.stage1_ckpt_step
@@ -412,18 +528,23 @@ def main(cfg):
         cfg.solver.lr_scheduler,
         optimizer=optimizer,
         num_warmup_steps=cfg.solver.lr_warmup_steps
-        * cfg.solver.gradient_accumulation_steps,
+                         * cfg.solver.gradient_accumulation_steps,
         num_training_steps=cfg.solver.max_train_steps
-        * cfg.solver.gradient_accumulation_steps,
+                           * cfg.solver.gradient_accumulation_steps,
     )
+
+    ratio = cfg.data.train_width / cfg.data.train_height
 
     train_dataset = HumanDanceVideoDataset(
         width=cfg.data.train_width,
         height=cfg.data.train_height,
         n_sample_frames=cfg.data.n_sample_frames,
         sample_rate=cfg.data.sample_rate,
-        img_scale=(1.0, 1.0),
+        img_scale=cfg.data.crop_scale,
+        img_ratio=[ratio, ratio],
         data_meta_paths=cfg.data.meta_paths,
+        do_center_crop=cfg.data.do_center_crop,
+        image_as_pose=openpose_guider_enabled,
     )
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=cfg.data.train_bs, shuffle=True, num_workers=4
@@ -454,13 +575,20 @@ def main(cfg):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        run_time = datetime.now().strftime("%Y%m%d-%H%M")
+        #run_time = datetime.now().strftime("%Y%m%d-%H%M")
         accelerator.init_trackers(
-            exp_name,
-            init_kwargs={"mlflow": {"run_name": run_time}},
+            "log",
+            #init_kwargs={"mlflow": {"run_name": run_time}},
         )
         # dump config file
-        mlflow.log_dict(OmegaConf.to_container(cfg), "config.yaml")
+        #mlflow.log_dict(OmegaConf.to_container(cfg), "config.yaml")
+
+    yaml.safe_dump(
+        OmegaConf.to_container(cfg),
+        open(os.path.join(save_dir, "config.yaml"), "w"),
+    )
+
+    cfg.val.special_steps = cfg.val.special_steps if hasattr(cfg.val, "special_steps") else [1]
 
     # Train!
     total_batch_size = (
@@ -528,6 +656,13 @@ def main(cfg):
                     latents = latents * 0.18215
 
                 noise = torch.randn_like(latents)
+                if hasattr(cfg, "noise_t_uniform") and cfg.noise_t_uniform:
+                    # mix in a noise uniform along frames dim
+                    ns = noise
+                    nu = torch.randn_like(latents[:, :, :1, :, :])
+                    k = torch.rand([]).to(noise.device)
+                    noise = k.sqrt() * nu + (1 - k).sqrt() * ns
+
                 if cfg.noise_offset > 0:
                     noise += cfg.noise_offset * torch.randn(
                         (latents.shape[0], latents.shape[1], 1, 1, 1),
@@ -655,12 +790,12 @@ def main(cfg):
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
-                if global_step % cfg.val.validation_steps == 0:
+                if global_step % cfg.val.validation_steps == 0 or global_step in cfg.val.special_steps:
                     if accelerator.is_main_process:
                         generator = torch.Generator(device=accelerator.device)
                         generator.manual_seed(cfg.seed)
 
-                        sample_dicts = log_validation(
+                        sample_dicts, metric = log_validation(
                             vae=vae,
                             image_enc=image_enc,
                             net=net,
@@ -670,17 +805,30 @@ def main(cfg):
                             height=cfg.data.train_height,
                             clip_length=cfg.data.n_sample_frames,
                             generator=generator,
+                            config=hasattr(cfg, 'validation') and cfg.validation,
+                            save_dir=os.path.join(save_dir, 'metric', str(global_step)),
+                            image_as_pose=openpose_guider_enabled,
                         )
 
                         for sample_id, sample_dict in enumerate(sample_dicts):
                             sample_name = sample_dict["name"]
                             vid = sample_dict["vid"]
-                            with TemporaryDirectory() as temp_dir:
-                                out_file = Path(
-                                    f"{temp_dir}/{global_step:06d}-{sample_name}.gif"
-                                )
-                                save_videos_grid(vid, out_file, n_rows=2)
-                                mlflow.log_artifact(out_file)
+                            # with TemporaryDirectory() as temp_dir:
+                            #     out_file = Path(
+                            #         f"{temp_dir}/{global_step:06d}-{sample_name}.gif"
+                            #     )
+                            #     save_videos_grid(vid, out_file, n_rows=2)
+                            #     mlflow.log_artifact(out_file)
+                            temp_dir = 'validation'
+                            out_file = Path(
+                                f"{save_dir}/{temp_dir}/{global_step:06d}-{sample_name}.gif"
+                            )
+                            save_videos_grid(vid, out_file, n_rows=2)
+                            #mlflow.log_artifact(out_file)
+
+                        if metric is not None:
+                            log_metric = {f'metric/{k}': v for k, v in metric.items()}
+                            accelerator.log(log_metric, step=global_step)
 
             logs = {
                 "step_loss": loss.detach().item(),
@@ -690,10 +838,15 @@ def main(cfg):
             t_data_start = time.time()
             progress_bar.set_postfix(**logs)
 
+            if step % 100 == 0:
+                accelerator.log({"lr": logs["lr"]}, step=global_step)
+
             if global_step >= cfg.solver.max_train_steps:
                 break
         # save model after each epoch
-        if accelerator.is_main_process:
+        if (
+            epoch + 1
+        ) % cfg.save_model_epoch_interval == 0 and accelerator.is_main_process:
             save_path = os.path.join(save_dir, f"checkpoint-{global_step}")
             delete_additional_ckpt(save_dir, 1)
             accelerator.save_state(save_path)
@@ -750,7 +903,7 @@ def decode_latents(vae, latents):
     # video = self.vae.decode(latents).sample
     video = []
     for frame_idx in tqdm(range(latents.shape[0])):
-        video.append(vae.decode(latents[frame_idx : frame_idx + 1]).sample)
+        video.append(vae.decode(latents[frame_idx: frame_idx + 1]).sample)
     video = torch.cat(video)
     video = rearrange(video, "(b f) c h w -> b c f h w", f=video_length)
     video = (video / 2 + 0.5).clamp(0, 1)
@@ -768,6 +921,14 @@ if __name__ == "__main__":
         config = OmegaConf.load(args.config)
     elif args.config[-3:] == ".py":
         config = import_filename(args.config).cfg
+    elif os.path.isdir(args.config):
+        config_path = os.path.join(args.config, "config.yaml")
+        config = OmegaConf.load(config_path)
+        config.save_dir = args.config
+
+        dirs = os.listdir(args.config)
+        if any(d.startswith("checkpoint") for d in dirs):
+            config.resume_from_checkpoint = config.resume_from_checkpoint or "latest"
     else:
         raise ValueError("Do not support this format config file")
     main(config)
