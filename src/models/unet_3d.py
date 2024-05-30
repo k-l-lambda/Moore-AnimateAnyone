@@ -655,6 +655,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
             # merge the state dicts
             state_dict.update(motion_state_dict)
+        else:
+            print(f'WARNING: motion_module_path not exist: {motion_module_path}')
 
         # load the weights into the model
         m, u = model.load_state_dict(state_dict, strict=False)

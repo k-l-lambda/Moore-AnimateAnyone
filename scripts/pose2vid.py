@@ -127,7 +127,9 @@ def main():
             pose_transform = transforms.Compose(
                 [transforms.Resize((height, width)), transforms.ToTensor()]
             )
-            for pose_image_pil in pose_images[: args.L]:
+
+            n_frames = min(args.L, len(pose_images))
+            for pose_image_pil in pose_images[: n_frames]:
                 pose_tensor_list.append(pose_transform(pose_image_pil))
                 pose_list.append(pose_image_pil)
 
@@ -136,7 +138,7 @@ def main():
                 0
             )  # (1, c, 1, h, w)
             ref_image_tensor = repeat(
-                ref_image_tensor, "b c f h w -> b c (repeat f) h w", repeat=args.L
+                ref_image_tensor, "b c f h w -> b c (repeat f) h w", repeat=n_frames
             )
 
             pose_tensor = torch.stack(pose_tensor_list, dim=0)  # (f, c, h, w)
@@ -148,7 +150,7 @@ def main():
                 pose_list,
                 width,
                 height,
-                args.L,
+                n_frames,
                 args.steps,
                 args.cfg,
                 generator=generator,

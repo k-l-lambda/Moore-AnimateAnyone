@@ -76,10 +76,11 @@ def transfer(model, model_weights):
     return transfered_model_weights
 
 
-def draw_bodypose(canvas, candidate, subset):
+def draw_bodypose(canvas, candidate, subset, dropout=0):
     H, W, C = canvas.shape
     candidate = np.array(candidate)
     subset = np.array(subset)
+    subset[np.random.random(subset.shape) < dropout] = -1
 
     stickwidth = 4
 
@@ -157,7 +158,7 @@ def draw_bodypose(canvas, candidate, subset):
     return canvas
 
 
-def draw_handpose(canvas, all_hand_peaks):
+def draw_handpose(canvas, all_hand_peaks, dropout=0):
     H, W, C = canvas.shape
 
     edges = [
@@ -185,6 +186,7 @@ def draw_handpose(canvas, all_hand_peaks):
 
     for peaks in all_hand_peaks:
         peaks = np.array(peaks)
+        peaks[:, 0][np.random.random(peaks.shape[0]) < dropout] = -1
 
         for ie, e in enumerate(edges):
             x1, y1 = peaks[e[0]]
@@ -208,7 +210,53 @@ def draw_handpose(canvas, all_hand_peaks):
             x = int(x * W)
             y = int(y * H)
             if x > eps and y > eps:
-                cv2.circle(canvas, (x, y), 4, (0, 0, 255), thickness=-1)
+                cv2.circle(canvas, (x, y), 2, (0, 0, 255), thickness=-1)
+    return canvas
+
+
+def draw_footpose(canvas, foot_peaks):
+    H, W, C = canvas.shape
+
+    dot_colors = [
+        [181, 40, 112],
+        [163, 53, 181],
+        [49, 124, 255],
+        [137, 181, 40],
+        [60, 181, 99],
+        [64, 255, 188],
+    ]
+
+    edges = [
+        ([2, 0], [255, 26, 250]),
+        ([2, 1], [135, 24, 255]),
+        ([5, 3], [193, 255, 23]),
+        ([5, 4], [25, 255, 121]),
+    ]
+
+    for peaks in foot_peaks:
+        for (idx, color) in edges:
+            x1, y1 = peaks[idx[0]]
+            x2, y2 = peaks[idx[1]]
+            x1 = int(x1 * W)
+            y1 = int(y1 * H)
+            x2 = int(x2 * W)
+            y2 = int(y2 * H)
+            if x1 > eps and y1 > eps and x2 > eps and y2 > eps:
+                cv2.line(
+                    canvas,
+                    (x1, y1),
+                    (x2, y2),
+                    color,
+                    thickness=2,
+                )
+
+        for i, keypoint in enumerate(peaks):
+            x, y = keypoint
+            x = int(x * W)
+            y = int(y * H)
+            if x > eps and y > eps:
+                cv2.circle(canvas, (x, y), 3, dot_colors[i], thickness=-1)
+
     return canvas
 
 

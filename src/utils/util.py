@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import av
+import imageio
 import numpy as np
 import torch
 import torchvision
@@ -63,6 +64,9 @@ def save_videos_from_pil(pil_images, path, fps=8):
         stream.width = width
         stream.height = height
 
+        # set codec compression rate
+        stream.options['crf'] = '15'
+
         for pil_image in pil_images:
             # pil_image = Image.fromarray(image_arr).convert("RGB")
             av_frame = av.VideoFrame.from_image(pil_image)
@@ -103,6 +107,23 @@ def save_videos_grid(videos: torch.Tensor, path: str, rescale=False, n_rows=6, f
     save_videos_from_pil(outputs, path, fps)
 
 
+def make_image_grid(images, rows: int, cols: int, resize: int = None):
+    """
+    Prepares a single grid of images. Useful for visualization purposes.
+    """
+    assert len(images) == rows * cols
+
+    if resize is not None:
+        images = [img.resize((resize, resize)) for img in images]
+
+    w, h = images[0].size
+    grid = Image.new("RGB", size=(cols * w, rows * h))
+
+    for i, img in enumerate(images):
+        grid.paste(img, box=(i % cols * w, i // cols * h))
+    return grid
+
+
 def read_frames(video_path):
     container = av.open(video_path)
 
@@ -126,3 +147,17 @@ def get_fps(video_path):
     fps = video_stream.average_rate
     container.close()
     return fps
+
+
+def video2images(path, step=4, length=16, start=0):
+    reader = imageio.get_reader(path)
+    frames = []
+    for frame in reader:
+        frames.append(np.array(frame))
+    frames = frames[start::step][:length]
+    return frames
+
+
+def images2video(video, path, fps=8):
+    imageio.mimsave(path, video, fps=fps)
+    return

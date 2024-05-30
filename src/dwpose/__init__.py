@@ -19,19 +19,22 @@ from . import util
 from .wholebody import Wholebody
 
 
-def draw_pose(pose, H, W):
+def draw_pose(pose, H, W, dropout=0):
     bodies = pose["bodies"]
     faces = pose["faces"]
     hands = pose["hands"]
+    foot = pose["foot"]
     candidate = bodies["candidate"]
     subset = bodies["subset"]
     canvas = np.zeros(shape=(H, W, 3), dtype=np.uint8)
 
-    canvas = util.draw_bodypose(canvas, candidate, subset)
+    canvas = util.draw_bodypose(canvas, candidate, subset, dropout=dropout)
 
-    canvas = util.draw_handpose(canvas, hands)
+    canvas = util.draw_handpose(canvas, hands, dropout=dropout)
 
-    canvas = util.draw_facepose(canvas, faces)
+    canvas = util.draw_footpose(canvas, foot)
+
+    # canvas = util.draw_facepose(canvas, faces)
 
     return canvas
 
@@ -65,6 +68,7 @@ class DWposeDetector:
         detect_resolution=512,
         image_resolution=512,
         output_type="pil",
+        dropout=0,
         **kwargs,
     ):
         input_image = cv2.cvtColor(
@@ -105,9 +109,9 @@ class DWposeDetector:
             hands = np.vstack([hands, candidate[[max_ind], 113:]])
 
             bodies = dict(candidate=body, subset=score)
-            pose = dict(bodies=bodies, hands=hands, faces=faces)
+            pose = dict(bodies=bodies, hands=hands, faces=faces, foot=foot)
 
-            detected_map = draw_pose(pose, H, W)
+            detected_map = draw_pose(pose, H, W, dropout=dropout)
             detected_map = HWC3(detected_map)
 
             img = resize_image(input_image, image_resolution)
@@ -120,4 +124,4 @@ class DWposeDetector:
             if output_type == "pil":
                 detected_map = Image.fromarray(detected_map)
 
-            return detected_map, body_score
+            return detected_map, body_score, pose

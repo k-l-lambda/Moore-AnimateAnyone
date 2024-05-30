@@ -1,29 +1,37 @@
 # https://github.com/IDEA-Research/DWPose
 from pathlib import Path
 
-import cv2
+import os
+
+import torch
 import numpy as np
 import onnxruntime as ort
 
 from .onnxdet import inference_detector
 from .onnxpose import inference_pose
 
-ModelDataPathPrefix = Path("./pretrained_weights")
+ModelDataPathPrefix = Path(os.getenv("DWPOSE_MODEL_PREFIX", "./pretrained_weights"))
 
 
 class Wholebody:
-    def __init__(self, device="cuda:0"):
+    def __init__(self, device="cuda:0", pathPrefix=ModelDataPathPrefix):
         providers = (
             ["CPUExecutionProvider"] if device == "cpu" else ["CUDAExecutionProvider"]
         )
-        onnx_det = ModelDataPathPrefix.joinpath("DWPose/yolox_l.onnx")
-        onnx_pose = ModelDataPathPrefix.joinpath("DWPose/dw-ll_ucoco_384.onnx")
+        onnx_det = pathPrefix.joinpath("DWPose/yolox_l.onnx")
+        onnx_pose = pathPrefix.joinpath("DWPose/dw-ll_ucoco_384.onnx")
+
+        device_id = None
+        if type(device) is str:
+            device_id = device.split(":")[-1]
+        elif isinstance(device, torch.device):
+            device_id = device.index
 
         self.session_det = ort.InferenceSession(
-            path_or_bytes=onnx_det, providers=providers
+            path_or_bytes=onnx_det, providers=providers, provider_options=[{'device_id': device_id}]
         )
         self.session_pose = ort.InferenceSession(
-            path_or_bytes=onnx_pose, providers=providers
+            path_or_bytes=onnx_pose, providers=providers, provider_options=[{'device_id': device_id}]
         )
 
     def __call__(self, oriImg):

@@ -22,9 +22,10 @@ from einops import rearrange
 from tqdm import tqdm
 from transformers import CLIPImageProcessor
 
-from src.models.mutual_self_attention import ReferenceAttentionControl
-from src.pipelines.context import get_context_scheduler
-from src.pipelines.utils import get_tensor_interpolation_method
+from ..models.mutual_self_attention import ReferenceAttentionControl
+from .context import get_context_scheduler
+from .utils import get_tensor_interpolation_method
+from ..dataset.utils import SquarePad
 
 
 @dataclass
@@ -68,7 +69,7 @@ class Pose2VideoPipeline(DiffusionPipeline):
             text_encoder=text_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.clip_image_processor = CLIPImageProcessor()
+        self.clip_image_processor = CLIPImageProcessor(do_center_crop=False)
         self.ref_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True
         )
@@ -77,6 +78,8 @@ class Pose2VideoPipeline(DiffusionPipeline):
             do_convert_rgb=True,
             do_normalize=False,
         )
+
+        self.square_pad = SquarePad()
 
     def enable_vae_slicing(self):
         self.vae.enable_slicing()
@@ -109,14 +112,17 @@ class Pose2VideoPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    def decode_latents(self, latents):
+    def decode_latents(self, latents, decoder_consistency=None):
         video_length = latents.shape[2]
         latents = 1 / 0.18215 * latents
         latents = rearrange(latents, "b c f h w -> (b f) c h w")
         # video = self.vae.decode(latents).sample
         video = []
         for frame_idx in tqdm(range(latents.shape[0])):
-            video.append(self.vae.decode(latents[frame_idx : frame_idx + 1]).sample)
+            if decoder_consistency is not None:
+                video.append(decoder_consistency(latents[frame_idx:frame_idx + 1]))
+            else:
+                video.append(self.vae.decode(latents[frame_idx: frame_idx + 1]).sample)
         video = torch.cat(video)
         video = rearrange(video, "(b f) c h w -> b c f h w", f=video_length)
         video = (video / 2 + 0.5).clamp(0, 1)
@@ -156,11 +162,12 @@ class Pose2VideoPipeline(DiffusionPipeline):
         device,
         generator,
         latents=None,
+        uniform_along_time=False,
     ):
         shape = (
             batch_size,
             num_channels_latents,
-            video_length,
+            1 if uniform_along_time else video_length,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
@@ -174,6 +181,9 @@ class Pose2VideoPipeline(DiffusionPipeline):
             latents = randn_tensor(
                 shape, generator=generator, device=device, dtype=dtype
             )
+
+            if uniform_along_time:
+                latents = latents.repeat(1, 1, video_length, 1, 1)
         else:
             latents = latents.to(device)
 
@@ -207,7 +217,7 @@ class Pose2VideoPipeline(DiffusionPipeline):
             text_input_ids, untruncated_ids
         ):
             removed_text = self.tokenizer.batch_decode(
-                untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
+                untruncated_ids[:, self.tokenizer.model_max_length - 1: -1]
             )
 
         if (
@@ -357,6 +367,7 @@ class Pose2VideoPipeline(DiffusionPipeline):
         context_overlap=4,
         context_batch_size=1,
         interpolation_factor=1,
+        decoder_consistency=None,
         **kwargs,
     ):
         # Default height and width to unet
@@ -375,7 +386,8 @@ class Pose2VideoPipeline(DiffusionPipeline):
 
         # Prepare clip image embeds
         clip_image = self.clip_image_processor.preprocess(
-            ref_image.resize((224, 224)), return_tensors="pt"
+            self.square_pad(ref_image),
+            return_tensors="pt",
         ).pixel_values
         clip_image_embeds = self.image_encoder(
             clip_image.to(device, dtype=self.image_encoder.dtype)
@@ -387,21 +399,6 @@ class Pose2VideoPipeline(DiffusionPipeline):
             encoder_hidden_states = torch.cat(
                 [uncond_encoder_hidden_states, encoder_hidden_states], dim=0
             )
-
-        reference_control_writer = ReferenceAttentionControl(
-            self.reference_unet,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            mode="write",
-            batch_size=batch_size,
-            fusion_blocks="full",
-        )
-        reference_control_reader = ReferenceAttentionControl(
-            self.denoising_unet,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            mode="read",
-            batch_size=batch_size,
-            fusion_blocks="full",
-        )
 
         num_channels_latents = self.denoising_unet.in_channels
         latents = self.prepare_latents(
@@ -441,8 +438,25 @@ class Pose2VideoPipeline(DiffusionPipeline):
             device=device, dtype=self.pose_guider.dtype
         )
         pose_fea = self.pose_guider(pose_cond_tensor)
+        print('pose_cond_tensor:', pose_cond_tensor[:, :1, :1, :4, :4], pose_cond_tensor.mean())
+        print('pose_fea:', pose_fea[:, :1, :1, :4, :4], pose_fea.mean())
 
         context_scheduler = get_context_scheduler(context_schedule)
+
+        reference_control_writer = ReferenceAttentionControl(
+            self.reference_unet,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            mode="write",
+            batch_size=batch_size,
+            fusion_blocks="full",
+        )
+        reference_control_reader = ReferenceAttentionControl(
+            self.denoising_unet,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            mode="read",
+            batch_size=batch_size,
+            fusion_blocks="full",
+        )
 
         # denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -464,6 +478,7 @@ class Pose2VideoPipeline(DiffusionPipeline):
 
                 # 1. Forward reference image
                 if i == 0:
+                    print('encoder_hidden_states:', encoder_hidden_states.mean(), encoder_hidden_states.std())
                     self.reference_unet(
                         ref_image_latents.repeat(
                             (2 if do_classifier_free_guidance else 1), 1, 1, 1
@@ -503,7 +518,7 @@ class Pose2VideoPipeline(DiffusionPipeline):
                 for i in range(num_context_batches):
                     global_context.append(
                         context_queue[
-                            i * context_batch_size : (i + 1) * context_batch_size
+                        i * context_batch_size: (i + 1) * context_batch_size
                         ]
                     )
 
@@ -559,7 +574,7 @@ class Pose2VideoPipeline(DiffusionPipeline):
         if interpolation_factor > 0:
             latents = self.interpolate_latents(latents, interpolation_factor, device)
         # Post-processing
-        images = self.decode_latents(latents)  # (b, c, f, h, w)
+        images = self.decode_latents(latents, decoder_consistency=decoder_consistency)  # (b, c, f, h, w)
 
         # Convert to tensor
         if output_type == "tensor":

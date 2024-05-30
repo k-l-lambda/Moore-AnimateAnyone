@@ -29,7 +29,7 @@ if __name__ == "__main__":
     frames = read_frames(args.video_path)
     kps_results = []
     for i, frame_pil in enumerate(frames):
-        result, score = detector(frame_pil)
+        result, score, _ = detector(frame_pil)
         score = np.mean(score, axis=-1)
 
         kps_results.append(result)
