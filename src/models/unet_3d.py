@@ -653,6 +653,13 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                     new_motion_state_dict[k] = motion_state_dict[k]
                 motion_state_dict = new_motion_state_dict
 
+
+
+            for weight_name in list(motion_state_dict.keys()):
+                if weight_name[-2:]== 'pe':
+                    del motion_state_dict[weight_name]
+                    # print(weight_name)
+ 
             # merge the state dicts
             state_dict.update(motion_state_dict)
 

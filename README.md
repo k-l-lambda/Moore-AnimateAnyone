@@ -1,220 +1,211 @@
-# 🤗 Introduction
+# MusePose
 
-**update** 🏋️🏋️🏋️ We release our training codes!! Now you can train your own AnimateAnyone models. See [here](#train) for more details. Have fun!
+MusePose: a Pose-Driven Image-to-Video Framework for Virtual Human Generation. 
 
-**update**：🔥🔥🔥 We launch a HuggingFace Spaces demo of Moore-AnimateAnyone at [here](https://huggingface.co/spaces/xunsong/Moore-AnimateAnyone)!!
+Zhengyan Tong,
+Chao Li,
+Zhaokang Chen,
+Bin Wu<sup>†</sup>,
+Wenjiang Zhou
+(<sup>†</sup>Corresponding Author, benbinwu@tencent.com)
 
-This repository reproduces [AnimateAnyone](https://github.com/HumanAIGC/AnimateAnyone). To align the results demonstrated by the original paper, we adopt various approaches and tricks, which may differ somewhat from the paper and another [implementation](https://github.com/guoqincode/Open-AnimateAnyone). 
+Lyra Lab, Tencent Music Entertainment
 
-It's worth noting that this is a very preliminary version, aiming for approximating the performance (roughly 80% under our test) showed in [AnimateAnyone](https://github.com/HumanAIGC/AnimateAnyone). 
 
-We will continue to develop it, and also welcome feedbacks and ideas from the community. The enhanced version will also be launched on our [MoBi MaLiang](https://maliang.mthreads.com/) AIGC platform, running on our own full-featured GPU S4000 cloud computing platform.
+**[github](https://github.com/TMElyralab/MusePose)**    **[huggingface](https://huggingface.co/TMElyralab/MusePose)**    **space (comming soon)**    **Project (comming soon)**    **Technical report (comming soon)**
 
-# 📝 Release Plans
+[MusePose](https://github.com/TMElyralab/MusePose) is an image-to-video generation framework for virtual human under control signal such as pose. 
 
-- [x] Inference codes and pretrained weights
-- [x] Training scripts
+`MusePose` is the last building block of **the Muse opensource serie**. Together with [MuseV](https://github.com/TMElyralab/MuseV) and [MuseTalk](https://github.com/TMElyralab/MuseTalk), we hope the community can join us and march towards the vision where a virtual human can be generated end2end with native ability of full body movement and interaction. Please stay tuned for our next milestone!
 
-# 🎞️ Examples 
+We really appreciate [AnimateAnyone](https://github.com/HumanAIGC/AnimateAnyone) for their academic paper and [Moore-AnimateAnyone](https://github.com/MooreThreads/Moore-AnimateAnyone) for their code base, which have significantly expedited the development of the AIGC community and [MusePose](https://github.com/TMElyralab/MusePose).
 
-Here are some results we generated, with the resolution of 512x768.
+## Overview
+[MusePose](https://github.com/TMElyralab/MusePose) is a diffusion-based and pose-guided virtual human video generation framework.  
+Our main contributions could be summarized as follows:
+1. The released model can generate dance videos of the human character in a reference image under the given pose sequence. The result quality exceeds almost all current open source models within the same topic.
+2. We release the `pose align` algorithm so that users could align arbitrary dance videos to arbitrary reference images, which **SIGNIFICANTLY** improved inference performance and enhanced model usability.
+3. We have fixed several important bugs and made some improvement based on the code of [Moore-AnimateAnyone](https://github.com/MooreThreads/Moore-AnimateAnyone).
 
-https://github.com/MooreThreads/Moore-AnimateAnyone/assets/138439222/f0454f30-6726-4ad4-80a7-5b7a15619057
-
-https://github.com/MooreThreads/Moore-AnimateAnyone/assets/138439222/337ff231-68a3-4760-a9f9-5113654acf48
-
+## Demos
 <table class="center">
     
 <tr>
     <td width=50% style="border: none">
-        <video controls autoplay loop src="https://github.com/MooreThreads/Moore-AnimateAnyone/assets/138439222/9c4d852e-0a99-4607-8d63-569a1f67a8d2" muted="false"></video>
+        <video controls autoplay loop src="https://github.com/TMElyralab/MusePose/assets/47803475/bb52ca3e-8a5c-405a-8575-7ab42abca248" muted="false"></video>
     </td>
     <td width=50% style="border: none">
-        <video controls autoplay loop src="https://github.com/MooreThreads/Moore-AnimateAnyone/assets/138439222/722c6535-2901-4e23-9de9-501b22306ebd" muted="false"></video>
+        <video controls autoplay loop src="https://github.com/TMElyralab/MusePose/assets/47803475/6667c9ae-8417-49a1-bbbb-fe1695404c23" muted="false"></video>
     </td>
 </tr>
 
 <tr>
     <td width=50% style="border: none">
-        <video controls autoplay loop src="https://github.com/MooreThreads/Moore-AnimateAnyone/assets/138439222/17b907cc-c97e-43cd-af18-b646393c8e8a" muted="false"></video>
+        <video controls autoplay loop src="https://github.com/TMElyralab/MusePose/assets/47803475/7f7a3aaf-2720-4b50-8bca-3257acce4733" muted="false"></video>
     </td>
     <td width=50% style="border: none">
-        <video controls autoplay loop src="https://github.com/MooreThreads/Moore-AnimateAnyone/assets/138439222/86f2f6d2-df60-4333-b19b-4c5abcd5999d" muted="false"></video>
+        <video controls autoplay loop src="https://github.com/TMElyralab/MusePose/assets/47803475/c56f7e9c-d94d-494e-88e6-62a4a3c1e016" muted="false"></video>
     </td>
 </tr>
+
+
+<tr>
+    <td width=50% style="border: none">
+        <video controls autoplay loop src="https://github.com/TMElyralab/MusePose/assets/47803475/00a9faec-2453-4834-ad1f-44eb0ec8247d" muted="false"></video>
+    </td>
+    <td width=50% style="border: none">
+        <video controls autoplay loop src="https://github.com/TMElyralab/MusePose/assets/47803475/41ad26b3-d477-4975-bf29-73a3c9ed0380" muted="false"></video>
+    </td>
+</tr>
+
+<tr>
+    <td width=50% style="border: none">
+        <video controls autoplay loop src="https://github.com/TMElyralab/MusePose/assets/47803475/2bbebf98-6805-4f1b-b769-537f69cc0e4b" muted="false"></video>
+    </td>
+    <td width=50% style="border: none">
+        <video controls autoplay loop src="https://github.com/TMElyralab/MusePose/assets/47803475/1b2b97d0-0ae9-49a6-83ba-b3024ae64f08" muted="false"></video>
+    </td>
+</tr>
+
 </table>
 
-**Limitation**: We observe following shortcomings in current version:
-1. The background may occur some artifacts, when the reference image has a clean background
-2. Suboptimal results may arise when there is a scale mismatch between the reference image and keypoints. We have yet to implement preprocessing techniques as mentioned in the [paper](https://arxiv.org/pdf/2311.17117.pdf).
-3. Some flickering and jittering may occur when the motion sequence is subtle or the scene is static.
 
-These issues will be addressed and improved in the near future. We appreciate your anticipation!
+## News
+- [05/27/2024] Release `MusePose` and pretrained models.
 
-# ⚒️ Installation
 
-## Build Environtment
+## Todo:
+- [x] release our trained models and inference codes of MusePose.
+- [x] release pose align algorithm.
+- [ ] training guidelines.
+- [ ] Huggingface Gradio demo.
+- [ ] a improved architecture and model (may take longer).
 
-We Recommend a python version `>=3.10` and cuda version `=11.7`. Then build environment as follows:
+
+# Getting Started
+We provide a detailed tutorial about the installation and the basic usage of MusePose for new users:
+
+## Installation
+To prepare the Python environment and install additional packages such as opencv, diffusers, mmcv, etc., please follow the steps below:
+
+### Build environment
+
+We recommend a python version >=3.10 and cuda version =11.7. Then build environment as follows:
 
 ```shell
-# [Optional] Create a virtual env
-python -m venv .venv
-source .venv/bin/activate
-# Install with pip:
 pip install -r requirements.txt
 ```
 
-## Download weights
-
-**Automatically downloading**: You can run the following command to download weights automatically:
-
-```shell
-python tools/download_weights.py
+### mmlab packages
+```bash
+pip install --no-cache-dir -U openmim 
+mim install mmengine 
+mim install "mmcv>=2.0.1" 
+mim install "mmdet>=3.1.0" 
+mim install "mmpose>=1.1.0" 
 ```
 
-Weights will be placed under the `./pretrained_weights` direcotry. The whole downloading process may take a long time.
 
-**Manually downloading**: You can also download weights manually, which has some steps:
+### Download weights
+You can download weights manually as follows:
 
-1. Download our trained [weights](https://huggingface.co/patrolli/AnimateAnyone/tree/main), which include four parts: `denoising_unet.pth`, `reference_unet.pth`, `pose_guider.pth` and `motion_module.pth`.
+1. Download our trained [weights](https://huggingface.co/TMElyralab/MusePose).
 
-2. Download pretrained weight of based models and other components: 
-    - [StableDiffusion V1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5)
-    - [sd-vae-ft-mse](https://huggingface.co/stabilityai/sd-vae-ft-mse)
-    - [image_encoder](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/tree/main/image_encoder)
+2. Download the weights of other components:
+   - [sd-image-variations-diffusers](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/tree/main/unet)
+   - [sd-vae-ft-mse](https://huggingface.co/stabilityai/sd-vae-ft-mse)
+   - [dwpose](https://huggingface.co/yzd-v/DWPose/tree/main)
+   - [yolox](https://download.openmmlab.com/mmdetection/v2.0/yolox/yolox_l_8x8_300e_coco/yolox_l_8x8_300e_coco_20211126_140236-d3bd2b23.pth)
+   - [image_encoder](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/tree/main/image_encoder)
 
-3. Download dwpose weights (`dw-ll_ucoco_384.onnx`, `yolox_l.onnx`) following [this](https://github.com/IDEA-Research/DWPose?tab=readme-ov-file#-dwpose-for-controlnet).
-
-Finally, these weights should be orgnized as follows:
-
-```text
+Finally, these weights should be organized in `pretrained_weights` as follows:
+```
 ./pretrained_weights/
-|-- DWPose
-|   |-- dw-ll_ucoco_384.onnx
-|   `-- yolox_l.onnx
+|-- MusePose
+|   |-- denoising_unet.pth
+|   |-- motion_module.pth
+|   |-- pose_guider.pth
+|   └── reference_unet.pth
+|-- dwpose
+|   |-- dw-ll_ucoco_384.pth
+|   └── yolox_l_8x8_300e_coco.pth
+|-- sd-image-variations-diffusers
+|   └── unet
+|       |-- config.json
+|       └── diffusion_pytorch_model.bin
 |-- image_encoder
 |   |-- config.json
-|   `-- pytorch_model.bin
-|-- denoising_unet.pth
-|-- motion_module.pth
-|-- pose_guider.pth
-|-- reference_unet.pth
-|-- sd-vae-ft-mse
-|   |-- config.json
-|   |-- diffusion_pytorch_model.bin
-|   `-- diffusion_pytorch_model.safetensors
-`-- stable-diffusion-v1-5
-    |-- feature_extractor
-    |   `-- preprocessor_config.json
-    |-- model_index.json
-    |-- unet
-    |   |-- config.json
-    |   `-- diffusion_pytorch_model.bin
-    `-- v1-inference.yaml
+|   └── pytorch_model.bin
+└── sd-vae-ft-mse
+    |-- config.json
+    └── diffusion_pytorch_model.bin
+
+```
+## Quickstart
+### Inference
+#### Preparation
+Prepare your referemce images and dance videos in the folder ```./asserts``` and organnized as the example: 
+```
+./asserts/
+|-- images
+|   └── ref.png
+└── videos
+    └── dance.mp4
 ```
 
-Note: If you have installed some of the pretrained models, such as `StableDiffusion V1.5`, you can specify their paths in the config file (e.g. `./config/prompts/animation.yaml`).
+#### Pose Alignment
+Get the aligned dwpose of the reference image:
+```
+python pose_align.py --imgfn_refer ./assets/images/ref.png --vidfn ./assets/videos/dance.mp4
+```
+After this, you can see the pose align results in ```./assets/poses```, where ```./assets/poses/align/img_ref_video_dance.mp4``` is the aligned dwpose and the ```./assets/poses/align_demo/img_ref_video_dance.mp4``` is for debug.
 
-# 🚀 Training and Inference 
-
-## Inference
-
-Here is the cli command for running inference scripts:
-
-```shell
-python -m scripts.pose2vid --config ./configs/prompts/animation.yaml -W 512 -H 784 -L 64
+#### Inferring MusePose
+Add the path of the reference image and the aligned dwpose to the test config file ```./configs/test_stage_2.yaml``` as the example:
+```
+test_cases:
+  "./assets/images/ref.png":
+    - "./assets/poses/align/img_ref_video_dance.mp4"
 ```
 
-You can refer the format of `animation.yaml` to add your own reference images or pose videos. To convert the raw video into a pose video (keypoint sequence), you can run with the following command:
-
-```shell
-python tools/vid2pose.py --video_path /path/to/your/video.mp4
+Then, simply run
 ```
-
-## <span id="train"> Training </span>
-
-Note: package dependencies have been updated, you may upgrade your environment via `pip install -r requirements.txt` before training.
-
-### Data Preparation
-
-Extract keypoints from raw videos: 
-
-```shell
-python tools/extract_dwpose_from_vid.py --video_root /path/to/your/video_dir
+python test_stage_2.py --config ./configs/test_stage_2.yaml
 ```
+```./configs/test_stage_2.yaml``` is the path to the inference configuration file.
 
-Extract the meta info of dataset:
+Finally, you can see the output results in ```./output/```
 
-```shell
-python tools/extract_meta_info.py --root_path /path/to/your/video_dir --dataset_name anyone 
+#### Face Enhancement
+
+If you want to enhance the face region to have a better consistency of the face, you could use [FaceFusion](https://github.com/facefusion/facefusion). You could use the `face-swap` function to swap the face in the reference image to the generated video.
+
+### Training
+
+
+
+# Acknowledgement
+1. We thank [AnimateAnyone](https://github.com/HumanAIGC/AnimateAnyone) for their technical report, and have refer much to [Moore-AnimateAnyone](https://github.com/MooreThreads/Moore-AnimateAnyone) and [diffusers](https://github.com/huggingface/diffusers).
+1. We thank open-source components like [AnimateDiff](https://animatediff.github.io/), [dwpose](https://github.com/IDEA-Research/DWPose), [Stable Diffusion](https://github.com/CompVis/stable-diffusion), etc.. 
+
+Thanks for open-sourcing!
+
+# Limitations
+- Detail consitency: some details of the original character are not well preserved (e.g. face region and complex clothing).
+- Noise and flickering: we observe noise and flicking in complex background. 
+
+# Citation
+```bib
+@article{musepose,
+  title={MusePose: a Pose-Driven Image-to-Video Framework for Virtual Human Generation},
+  author={Tong, Zhengyan and Li, Chao and Chen, Zhaokang and Wu, Bin and Zhou, Wenjiang},
+  journal={arxiv},
+  year={2024}
+}
 ```
-
-Update lines in the training config file: 
-
-```yaml
-data:
-  meta_paths:
-    - "./data/anyone_meta.json"
-```
-
-### Stage1
-
-Put [openpose controlnet weights](https://huggingface.co/lllyasviel/control_v11p_sd15_openpose/tree/main) under `./pretrained_weights`, which is used to initialize the pose_guider.
-
-Put [sd-image-variation](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/tree/main) under `./pretrained_weights`, which is used to initialize unet weights.
-
-Run command:
-
-```shell
-accelerate launch train_stage_1.py --config configs/train/stage1.yaml
-```
-
-### Stage2
-
-Put the pretrained motion module weights `mm_sd_v15_v2.ckpt` ([download link](https://huggingface.co/guoyww/animatediff/blob/main/mm_sd_v15_v2.ckpt)) under `./pretrained_weights`. 
-
-Specify the stage1 training weights in the config file `stage2.yaml`, for example:
-
-```yaml
-stage1_ckpt_dir: './exp_output/stage1'
-stage1_ckpt_step: 30000 
-```
-
-Run command:
-
-```shell
-accelerate launch train_stage_2.py --config configs/train/stage2.yaml
-```
-
-# 🎨 Gradio Demo
-
-**HuggingFace Demo**: We launch a quick preview demo of Moore-AnimateAnyone at [HuggingFace Spaces](https://huggingface.co/spaces/xunsong/Moore-AnimateAnyone)!!
-We appreciate the assistance provided by the HuggingFace team in setting up this demo.
-
-To reduce waiting time, we limit the size (width, height, and length) and inference steps when generating videos. 
-
-If you have your own GPU resource (>= 16GB vram), you can run a local gradio app via following commands:
-
-`python app.py`
-
-# Community Contributions
-
-- Installation for Windows users: [Moore-AnimateAnyone-for-windows](https://github.com/sdbds/Moore-AnimateAnyone-for-windows)
-
-# 🖌️ Try on Mobi MaLiang
-
-We will launched this model on our [MoBi MaLiang](https://maliang.mthreads.com/) AIGC platform, running on our own full-featured GPU S4000 cloud computing platform. Mobi MaLiang has now integrated various AIGC applications and functionalities (e.g. text-to-image, controllable generation...). You can experience it by [clicking this link](https://maliang.mthreads.com/) or scanning the QR code bellow via WeChat!
-
-<p align="left">
-  <img src="assets/mini_program_maliang.png" width="100
-  "/>
-</p> 
-
-# ⚖️ Disclaimer
-
-This project is intended for academic research, and we explicitly disclaim any responsibility for user-generated content. Users are solely liable for their actions while using the generative model. The project contributors have no legal affiliation with, nor accountability for, users' behaviors. It is imperative to use the generative model responsibly, adhering to both ethical and legal standards.
-
-# 🙏🏻 Acknowledgements
-
-We first thank the authors of [AnimateAnyone](). Additionally, we would like to thank the contributors to the [majic-animate](https://github.com/magic-research/magic-animate), [animatediff](https://github.com/guoyww/AnimateDiff) and [Open-AnimateAnyone](https://github.com/guoqincode/Open-AnimateAnyone) repositories, for their open research and exploration. Furthermore, our repo incorporates some codes from [dwpose](https://github.com/IDEA-Research/DWPose) and [animatediff-cli-prompt-travel](https://github.com/s9roll7/animatediff-cli-prompt-travel/), and we extend our thanks to them as well.
+# Disclaimer/License
+1. `code`: The code of MusePose is released under the MIT License. There is no limitation for both academic and commercial usage.
+1. `model`: The trained model are available for non-commercial research purposes only.
+1. `other opensource model`: Other open-source models used must comply with their license, such as `ft-mse-vae`, `dwpose`, etc..
+1. The testdata are collected from internet, which are available for non-commercial research purposes only.
+1. `AIGC`: This project strives to impact the domain of AI-driven video generation positively. Users are granted the freedom to create videos using this tool, but they are expected to comply with local laws and utilize it responsibly. The developers do not assume any responsibility for potential misuse by users.

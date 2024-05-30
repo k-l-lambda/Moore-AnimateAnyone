@@ -18,7 +18,7 @@ unet_additional_kwargs:
     - Temporal_Self
     - Temporal_Self
     temporal_position_encoding: true
-    temporal_position_encoding_max_len: 32
+    temporal_position_encoding_max_len: 128
     temporal_attention_dim_div: 1
 
 noise_scheduler_kwargs:

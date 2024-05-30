@@ -40,11 +40,14 @@ class HumanDanceDataset(Dataset):
 
         self.transform = transforms.Compose(
             [
-                transforms.RandomResizedCrop(
+                # transforms.RandomResizedCrop(
+                #     self.img_size,
+                #     scale=self.img_scale,
+                #     ratio=self.img_ratio,
+                #     interpolation=transforms.InterpolationMode.BILINEAR,
+                # ),
+                transforms.Resize(
                     self.img_size,
-                    scale=self.img_scale,
-                    ratio=self.img_ratio,
-                    interpolation=transforms.InterpolationMode.BILINEAR,
                 ),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -53,11 +56,14 @@ class HumanDanceDataset(Dataset):
 
         self.cond_transform = transforms.Compose(
             [
-                transforms.RandomResizedCrop(
+                # transforms.RandomResizedCrop(
+                #     self.img_size,
+                #     scale=self.img_scale,
+                #     ratio=self.img_ratio,
+                #     interpolation=transforms.InterpolationMode.BILINEAR,
+                # ),
+                transforms.Resize(
                     self.img_size,
-                    scale=self.img_scale,
-                    ratio=self.img_ratio,
-                    interpolation=transforms.InterpolationMode.BILINEAR,
                 ),
                 transforms.ToTensor(),
             ]

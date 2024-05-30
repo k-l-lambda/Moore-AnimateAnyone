@@ -429,13 +429,22 @@ class CrossAttnDownBlock3D(nn.Module):
                 )[0]
 
                 # add motion module
-                hidden_states = (
-                    motion_module(
-                        hidden_states, temb, encoder_hidden_states=encoder_hidden_states
+                if motion_module is not None:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(motion_module),
+                        hidden_states.requires_grad_(),
+                        temb,
+                        encoder_hidden_states,
                     )
-                    if motion_module is not None
-                    else hidden_states
-                )
+
+                # # add motion module
+                # hidden_states = (
+                #     motion_module(
+                #         hidden_states, temb, encoder_hidden_states=encoder_hidden_states
+                #     )
+                #     if motion_module is not None
+                #     else hidden_states
+                # )
 
             else:
                 hidden_states = resnet(hidden_states, temb)

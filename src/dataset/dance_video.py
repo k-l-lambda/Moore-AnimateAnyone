@@ -41,11 +41,14 @@ class HumanDanceVideoDataset(Dataset):
 
         self.pixel_transform = transforms.Compose(
             [
-                transforms.RandomResizedCrop(
+                # transforms.RandomResizedCrop(
+                #     (height, width),
+                #     scale=self.img_scale,
+                #     ratio=self.img_ratio,
+                #     interpolation=transforms.InterpolationMode.BILINEAR,
+                # ),
+                transforms.Resize(
                     (height, width),
-                    scale=self.img_scale,
-                    ratio=self.img_ratio,
-                    interpolation=transforms.InterpolationMode.BILINEAR,
                 ),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -54,11 +57,14 @@ class HumanDanceVideoDataset(Dataset):
 
         self.cond_transform = transforms.Compose(
             [
-                transforms.RandomResizedCrop(
+                # transforms.RandomResizedCrop(
+                #     (height, width),
+                #     scale=self.img_scale,
+                #     ratio=self.img_ratio,
+                #     interpolation=transforms.InterpolationMode.BILINEAR,
+                # ),
+                transforms.Resize(
                     (height, width),
-                    scale=self.img_scale,
-                    ratio=self.img_ratio,
-                    interpolation=transforms.InterpolationMode.BILINEAR,
                 ),
                 transforms.ToTensor(),
             ]
@@ -89,9 +95,16 @@ class HumanDanceVideoDataset(Dataset):
         ), f"{len(video_reader) = } != {len(kps_reader) = } in {video_path}"
 
         video_length = len(video_reader)
+        video_fps = video_reader.get_avg_fps()
+        # print("fps", video_fps)
+        if video_fps > 30: # 30-60
+            sample_rate = self.sample_rate*2
+        else:
+            sample_rate = self.sample_rate
+
 
         clip_length = min(
-            video_length, (self.n_sample_frames - 1) * self.sample_rate + 1
+            video_length, (self.n_sample_frames - 1) * sample_rate + 1
         )
         start_idx = random.randint(0, video_length - clip_length)
         batch_index = np.linspace(

@@ -62,6 +62,11 @@ def save_videos_from_pil(pil_images, path, fps=8):
 
         stream.width = width
         stream.height = height
+        stream.pix_fmt = 'yuv420p'
+        stream.bit_rate = 10000000   
+        stream.options["crf"] = "18"
+
+
 
         for pil_image in pil_images:
             # pil_image = Image.fromarray(image_arr).convert("RGB")
